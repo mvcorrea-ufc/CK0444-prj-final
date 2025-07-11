@@ -6,14 +6,17 @@ import zipfile
 import os
 from pathlib import Path
 import sys
+import time
+
+import time
 
 def baixar_e_extrair_dados(url_zip, pasta_destino="sdp-data/raw_data"):
     """
-    Baixa e extrai dados de um arquivo ZIP, retornando o caminho do arquivo XLSX.
+    Baixa e extrai dados de um arquivo ZIP, com retentativas em caso de falha.
     Usa o arquivo local se já existir para evitar redownloads.
     """
     pasta_destino = Path(pasta_destino)
-    pasta_destino.mkdir(exist_ok=True)
+    pasta_destino.mkdir(parents=True, exist_ok=True)
 
     # Procurar pelo arquivo .xlsx primeiro
     for root, _, files in os.walk(pasta_destino):
@@ -22,37 +25,48 @@ def baixar_e_extrair_dados(url_zip, pasta_destino="sdp-data/raw_data"):
                 print(f"Arquivo XLSX local encontrado: {os.path.join(root, arquivo)}")
                 return os.path.join(root, arquivo)
 
-    # Se não encontrar, faz o download
+    # Se não encontrar, faz o download com retentativas
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     session = requests.Session()
     session.headers.update(headers)
     
-    try:
-        print(f"Baixando dados de {url_zip}...")
-        response = session.get(url_zip, timeout=60, stream=True)
-        response.raise_for_status()
-        print("Download concluído.")
-    except requests.exceptions.RequestException as e:
-        print(f"Erro no download: {e}", file=sys.stderr)
-        raise e
+    max_retries = 3
+    retry_delay = 10 # segundos
+
+    for attempt in range(max_retries):
+        try:
+            print(f"Tentativa {attempt + 1}/{max_retries} de baixar dados de {url_zip}...")
+            response = session.get(url_zip, timeout=60, stream=True)
+            response.raise_for_status()
+            print("Download concluído.")
             
-    zip_path = pasta_destino / "tx_rend_municipios.zip"
+            zip_path = pasta_destino / "dados.zip"
+            with open(zip_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print("Extraindo arquivo ZIP...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(pasta_destino)
+            
+            for root, _, files in os.walk(pasta_destino):
+                for arquivo in files:
+                    if arquivo.endswith('.xlsx'):
+                        return os.path.join(root, arquivo)
+            
+            raise FileNotFoundError("Arquivo XLSX não foi encontrado no ZIP.")
+
+        except requests.exceptions.RequestException as e:
+            print(f"Erro no download na tentativa {attempt + 1}: {e}", file=sys.stderr)
+            if attempt < max_retries - 1:
+                print(f"Aguardando {retry_delay} segundos para a próxima tentativa...")
+                time.sleep(retry_delay)
+                retry_delay *= 2 # Aumenta o tempo de espera (backoff exponencial)
+            else:
+                print("Número máximo de retentativas atingido. Abortando.", file=sys.stderr)
+                raise e
     
-    with open(zip_path, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
-    
-    print("Extraindo arquivo ZIP...")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(pasta_destino)
-    
-    for root, _, files in os.walk(pasta_destino):
-        for arquivo in files:
-            if arquivo.endswith('.xlsx'):
-                print(f"Arquivo XLSX extraído: {os.path.join(root, arquivo)}")
-                return os.path.join(root, arquivo)
-    
-    raise FileNotFoundError("Arquivo XLSX não foi encontrado no ZIP.")
+    raise FileNotFoundError("Falha ao baixar e extrair o arquivo após múltiplas tentativas.")
 
 def processar_dados_educacionais(path_xlsx, arquivo_saida="dados_educacionais.csv"):
     """
