@@ -1,19 +1,59 @@
 import pickle
-import pandas
-from sklearn.svm import SVC,LinearSVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+from pathlib import Path
 
-class SDPService:
+class PerformancePredictionService:
     """
-    Um serviço de predição de defeitos.
+    Serviço para prever a performance educacional de um município.
     """
 
-    def __init__(self, file_model_path : str=None):
-        self.model = pickle.load(open(file_model_path, 'rb'))
+    def __init__(self):
+        """
+        Carrega o modelo e o pré-processador a partir dos arquivos salvos.
+        """
+        base_dir = Path(__file__).parent.parent.parent.parent / 'sdp-model'
+        model_path = base_dir / 'champion_model.pkl'
+        preprocessor_path = base_dir / 'preprocessor.pkl'
 
-    def predict(self, data_tuple: list=[]) -> int:
-        X_features = ["LOC", "COM", "BLK", "NOF", "NOC", "APF", "AMC", "NER", "NEH", "CYC", "MAD"]
-        dataset = pandas.DataFrame([data_tuple], columns=X_features)
-        X = dataset[X_features]        
-        return self.model.predict(X)
+        print(f"Carregando modelo de: {model_path}")
+        print(f"Carregando pré-processador de: {preprocessor_path}")
+
+        with open(model_path, 'rb') as f_model:
+            self.model = pickle.load(f_model)
+        
+        with open(preprocessor_path, 'rb') as f_preprocessor:
+            self.preprocessor = pickle.load(f_preprocessor)
+
+    def predict(self, input_data: dict) -> dict:
+        """
+        Realiza a predição com base nos dados de entrada.
+
+        Args:
+            input_data (dict): Um dicionário contendo os valores para as features.
+                               Ex: {'PARTIDO': 'PSDB', 'TX_APROVACAO_5ANO': 0.8, ...}
+
+        Returns:
+            dict: Um dicionário com a predição e o label correspondente.
+        """
+        # Cria um DataFrame a partir do dicionário de entrada
+        df = pd.DataFrame([input_data])
+        
+        # Garante a ordem correta das colunas, conforme o treinamento
+        features = ['PARTIDO', 'TX_APROVACAO_5ANO', 'TX_REPROVACAO_5ANO', 'TX_ABANDONO_5ANO']
+        df = df[features]
+
+        # A predição do pipeline (modelo) já inclui o pré-processamento
+        prediction = self.model.predict(df)
+        prediction_proba = self.model.predict_proba(df)
+
+        # Mapeia o resultado numérico para um label compreensível
+        performance_label = "Alta" if prediction[0] == 1 else "Baixa"
+        
+        return {
+            "prediction": int(prediction[0]),
+            "performance_label": performance_label,
+            "probability": {
+                "baixa": round(prediction_proba[0][0], 4),
+                "alta": round(prediction_proba[0][1], 4)
+            }
+        }

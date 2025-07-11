@@ -4,15 +4,9 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'sdp-data/**'
-      - 'sdp-model/**'
-      - '.github/workflows/data-pipeline.yml'
   pull_request:
-    paths:
-      - 'sdp-data/**'
-      - 'sdp-model/**'
-      - '.github/workflows/data-pipeline.yml'
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -21,28 +15,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Install and Configure uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
         shell: bash
-
-      - name: Configure uv
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - name: Create Virtual Environment
         run: uv venv
-
       - name: Install dependencies
         run: uv pip install -r requirements.txt
-
       - name: Run Data Pipeline
         run: uv run python sdp-data/pipeline.py
-
       - name: Upload Dataset Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -56,34 +43,26 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Install and Configure uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
         shell: bash
-        
-      - name: Configure uv
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - name: Create Virtual Environment
         run: uv venv
-
       - name: Install dependencies
         run: uv pip install -r requirements.txt
-
       - name: Download Dataset Artifact
         uses: actions/download-artifact@v4
         with:
           name: sdp-dataset
           path: sdp-data
-
       - name: Run Model Pipeline
         run: uv run python sdp-model/pipeline.py
-
       - name: Upload Model Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -92,3 +71,30 @@ jobs:
             sdp-model/champion_model.pkl
             sdp-model/preprocessor.pkl
           if-no-files-found: error
+
+  test-service-pipeline:
+    needs: build-model-pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install and Configure uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        shell: bash
+      - name: Create Virtual Environment
+        run: uv venv
+      - name: Install dependencies
+        run: uv pip install -r requirements.txt
+      - name: Download Model Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdp-model
+          path: sdp-model
+      - name: Run Service Unit Tests
+        run: uv run --env PYTHONPATH=sdp-service/src python -m unittest discover sdp-service/tests
