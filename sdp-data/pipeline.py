@@ -19,8 +19,7 @@ def run_script(script_name):
         if result.stderr:
             print("Saída de erro padrão:")
             print(result.stderr)
-        print(f"--- {script_name} concluído com sucesso ---
-")
+        print(f"--- {script_name} concluído com sucesso ---")
     except subprocess.CalledProcessError as e:
         print(f"Erro ao executar {script_name}:")
         print(e.stdout)
