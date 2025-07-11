@@ -10,7 +10,8 @@ import time
 
 import time
 
-def baixar_e_extrair_dados(url_zip, pasta_destino="sdp-data/raw_data"):
+#def baixar_e_extrair_dados(url_zip, pasta_destino="sdp-data/raw_data"):
+def baixar_e_extrair_dados(url_zip, pasta_destino="raw_data"):
     """
     Baixa e extrai dados de um arquivo ZIP, com retentativas em caso de falha.
     Usa o arquivo local se já existir para evitar redownloads.
@@ -40,7 +41,7 @@ def baixar_e_extrair_dados(url_zip, pasta_destino="sdp-data/raw_data"):
             response.raise_for_status()
             print("Download concluído.")
             
-            zip_path = pasta_destino / "dados.zip"
+            zip_path = pasta_destino / "tx_rend_municipios.zip"
             with open(zip_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
@@ -136,6 +137,7 @@ def main():
     
     pasta_base = Path('sdp-data')
     pasta_raw = pasta_base / 'raw_data'
+    #pasta_raw = 'raw_data'
     
     arquivo_final_csv = pasta_raw / "dados_educacionais.csv"
 

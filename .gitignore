@@ -1,14 +1,20 @@
 # Ignorar o diretório de dados brutos
 sdp-data/raw_data/
 
+# Ignorar datasets gerados
+sdp-data/dados_completos.csv
+
 # Ignorar o ambiente virtual do uv
 .venv/
 
 # Arquivos de sistema do macOS
-.DS_Store
+**/.DS_Store
 
 # Arquivos de cache do Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Modelos e artefatos gerados
+*.pkl

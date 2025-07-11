@@ -1,4 +1,4 @@
-name: 'Data Pipeline'
+name: 'CI Pipeline'
 
 on:
   push:
@@ -6,17 +6,18 @@ on:
       - main
     paths:
       - 'sdp-data/**'
+      - 'sdp-model/**'
       - '.github/workflows/data-pipeline.yml'
   pull_request:
     paths:
       - 'sdp-data/**'
+      - 'sdp-model/**'
       - '.github/workflows/data-pipeline.yml'
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   build-data-pipeline:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,10 +28,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
         shell: bash
+
+      - name: Configure uv
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Create Virtual Environment
         run: uv venv
@@ -46,4 +48,47 @@ jobs:
         with:
           name: sdp-dataset
           path: sdp-data/dados_completos.csv
-          if-no-files-found: error # Fails the workflow if the file isn't found
+          if-no-files-found: error
+
+  build-model-pipeline:
+    needs: build-data-pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+        shell: bash
+        
+      - name: Configure uv
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Create Virtual Environment
+        run: uv venv
+
+      - name: Install dependencies
+        run: uv pip install -r requirements.txt
+
+      - name: Download Dataset Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdp-dataset
+          path: sdp-data
+
+      - name: Run Model Pipeline
+        run: uv run python sdp-model/pipeline.py
+
+      - name: Upload Model Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdp-model
+          path: |
+            sdp-model/champion_model.pkl
+            sdp-model/preprocessor.pkl
+          if-no-files-found: error

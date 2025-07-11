@@ -33,4 +33,3 @@ Este módulo é responsável por baixar, limpar, processar e combinar os dados e
 1.  **`create_education_data.py`:** Baixa os dados de rendimento escolar do INEP, processa e salva o arquivo `sdp-data/dados_educacionais.csv`.
 2.  **`merge_data.py`:** Baixa os dados eleitorais de 2020, combina com o arquivo educacional e salva o dataset final em `sdp-data/dados_completos.csv`.
 
-O arquivo `pymetrix.py` não é utilizado neste projeto.
