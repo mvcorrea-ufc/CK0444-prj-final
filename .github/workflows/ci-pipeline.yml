@@ -98,7 +98,7 @@ jobs:
           name: sdp-model
           path: sdp-model
       - name: Run Service Unit Tests
-        run: uv run --env PYTHONPATH=sdp-service/src python -m unittest discover sdp-service/tests
+        run: PYTHONPATH=sdp-service/src uv run python -m unittest discover sdp-service/tests
 
   generate-report-and-presentation:
     needs: test-service-pipeline
