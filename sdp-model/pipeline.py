@@ -2,6 +2,7 @@ import pandas as pd
 import pickle
 import logging
 import sys
+import json
 from pathlib import Path
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
@@ -19,34 +20,40 @@ def load_dataset(dataset_path):
     print(f"Carregando dataset de '{dataset_path}'...")
     return pd.read_csv(dataset_path)
 
-def save_champion_model(model, preprocessor, model_name="champion_model"):
-    """Salva o modelo campeão e o pré-processador."""
+def save_artifacts(model, preprocessor, results, model_name="champion_model"):
+    """Salva o modelo, o pré-processador e os resultados do benchmark."""
     model_dir = Path(__file__).parent
+    
+    # Salvar modelo e pré-processador
     with open(model_dir / f"{model_name}.pkl", "wb") as f:
         pickle.dump(model, f)
     with open(model_dir / "preprocessor.pkl", "wb") as f:
         pickle.dump(preprocessor, f)
-    print(f"Modelo '{model_name}.pkl' e 'preprocessor.pkl' salvos em '{model_dir}'.")
+        
+    # Salvar resultados do benchmark
+    with open(model_dir / "model_results.json", "w") as f:
+        json.dump(results, f, indent=2)
+        
+    print(f"Artefatos salvos em '{model_dir}': '{model_name}.pkl', 'preprocessor.pkl', 'model_results.json'.")
 
 def run_experiment(X, y, preprocessor):
     """Executa o benchmark entre os modelos para encontrar o campeão."""
     print("Iniciando benchmark dos modelos...")
     
     models = {
-        'LogisticRegression': LogisticRegression(max_iter=1000, solver='liblinear'),
-        'RandomForest': RandomForestClassifier()
+        'LogisticRegression': LogisticRegression(max_iter=1000, solver='liblinear', random_state=42),
+        'RandomForest': RandomForestClassifier(random_state=42)
     }
 
     params = {
         'LogisticRegression': {'classifier__C': [0.1, 1, 10]},
-        'RandomForest': {'classifier__n_estimators': [50, 100, 200], 'classifier__max_depth': [5, 10, None]}
+        'RandomForest': {'classifier__n_estimators': [50, 100], 'classifier__max_depth': [5, 10]}
     }
 
-    results = {}
+    benchmark_results = {}
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
     for model_name, model in models.items():
-        # Cria um pipeline que inclui pré-processamento, SMOTE e o classificador
         pipeline = ImbPipeline(steps=[
             ('preprocessor', preprocessor),
             ('smote', SMOTE(random_state=42)),
@@ -56,64 +63,68 @@ def run_experiment(X, y, preprocessor):
         grid_search = GridSearchCV(pipeline, params[model_name], cv=skf, scoring='roc_auc', n_jobs=-1)
         grid_search.fit(X, y)
         
-        results[model_name] = {
-            'best_score': grid_search.best_score_,
-            'best_params': grid_search.best_params_,
-            'best_estimator': grid_search.best_estimator_
+        benchmark_results[model_name] = {
+            'best_score_roc_auc': grid_search.best_score_,
+            'best_params': grid_search.best_params_
         }
         print(f"  - {model_name}: Melhor ROC AUC = {grid_search.best_score_:.4f}")
 
-    # Seleciona o melhor modelo com base no score
-    best_model_name = max(results, key=lambda k: results[k]['best_score'])
-    print(f"\nMelhor modelo encontrado: {best_model_name} com ROC AUC de {results[best_model_name]['best_score']:.4f}")
+    best_model_name = max(benchmark_results, key=lambda k: benchmark_results[k]['best_score_roc_auc'])
+    print(f"\nMelhor modelo encontrado: {best_model_name}")
     
-    return results[best_model_name]['best_estimator']
+    # Treinar o modelo campeão final com os melhores parâmetros
+    best_params = benchmark_results[best_model_name]['best_params']
+    champion_classifier = models[best_model_name].set_params(**{k.replace('classifier__', ''): v for k, v in best_params.items()})
+
+    champion_pipeline = ImbPipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('smote', SMOTE(random_state=42)),
+        ('classifier', champion_classifier)
+    ])
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    champion_pipeline.fit(X_train, y_train)
+    
+    # Extrair feature importances se for RandomForest
+    feature_importances = None
+    if best_model_name == 'RandomForest':
+        # Obter nomes das features após o one-hot encoding
+        ohe_feature_names = champion_pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(X.select_dtypes(include=['object']).columns)
+        all_feature_names = list(ohe_feature_names) + list(X.select_dtypes(exclude=['object']).columns)
+        
+        importances = champion_pipeline.named_steps['classifier'].feature_importances_
+        feature_importances = dict(zip(all_feature_names, importances))
+
+    final_results = {
+        "champion_model": best_model_name,
+        "benchmark": benchmark_results,
+        "feature_importances": feature_importances
+    }
+    
+    return champion_pipeline, preprocessor, final_results
 
 def main(dataset_path):
-    """Função principal para orquestrar o pipeline de treinamento do modelo."""
-    
-    # Carregar os dados
     df = load_dataset(dataset_path)
-
-    # Engenharia de Features e definição do Alvo
-    # Alvo: Classificar se a taxa de aprovação do 9º ano é 'Alta' (acima da mediana) ou 'Baixa'
     median_aprovacao = df['TX_APROVACAO_9ANO'].median()
     df['PERFORMANCE_ALVO'] = (df['TX_APROVACAO_9ANO'] > median_aprovacao).astype(int)
     print(f"Problema de classificação definido: PERFORMANCE_ALVO (1 se TX_APROVACAO_9ANO > {median_aprovacao:.3f}, 0 caso contrário)")
 
-    # Definir features (X) e alvo (y)
-    # Usaremos o partido e as taxas do 5º ano para prever a performance no 9º
     features = ['PARTIDO', 'TX_APROVACAO_5ANO', 'TX_REPROVACAO_5ANO', 'TX_ABANDONO_5ANO']
     target = 'PERFORMANCE_ALVO'
-    
     X = df[features]
     y = df[target]
 
-    # Pré-processamento: One-Hot Encode para a coluna 'PARTIDO'
-    # O restante das colunas numéricas não precisa de scaling para os modelos escolhidos
-    categorical_features = ['PARTIDO']
-    numeric_features = ['TX_APROVACAO_5ANO', 'TX_REPROVACAO_5ANO', 'TX_ABANDONO_5ANO']
-
     preprocessor = ColumnTransformer(
-        transformers=[
-            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
-        ],
-        remainder='passthrough' # Mantém as colunas numéricas
+        transformers=[('cat', OneHotEncoder(handle_unknown='ignore'), ['PARTIDO'])],
+        remainder='passthrough'
     )
 
-    # Executar o experimento para encontrar o melhor modelo
-    champion_model = run_experiment(X, y, preprocessor)
-
-    # Salvar o modelo campeão e o pré-processador
-    save_champion_model(champion_model, preprocessor)
+    champion_model, final_preprocessor, results = run_experiment(X, y, preprocessor)
+    save_artifacts(champion_model, final_preprocessor, results)
 
 if __name__ == "__main__":
-    # O caminho para o dataset é fixo, pois ele é um artefato do job anterior
     dataset_path = Path(__file__).parent.parent / "sdp-data" / "dados_completos.csv"
-    
     if not dataset_path.exists():
-        print(f"Erro: Dataset '{dataset_path}' não encontrado.")
-        print("Certifique-se de que a pipeline de dados foi executada com sucesso.")
+        print(f"Erro: Dataset '{dataset_path}' não encontrado.", file=sys.stderr)
         sys.exit(1)
-        
     main(dataset_path)

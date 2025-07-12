@@ -112,6 +112,13 @@ Para garantir que o serviço da API está funcionando corretamente:
 uv run --env PYTHONPATH=sdp-service/src python -m unittest discover sdp-service/tests
 ```
 
+### 5. Gerando o Relatório de Análise
+Para gerar um relatório HTML estático com a análise exploratória dos dados:
+```bash
+# Este comando irá gerar o arquivo sdp-report/index.html
+python sdp-report/generate_report.py
+```
+
 ---
 
 ## Pipeline de CI/CD com GitHub Actions

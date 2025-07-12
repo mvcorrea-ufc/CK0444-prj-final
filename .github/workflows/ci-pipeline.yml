@@ -98,3 +98,39 @@ jobs:
           path: sdp-model
       - name: Run Service Unit Tests
         run: uv run --env PYTHONPATH=sdp-service/src python -m unittest discover sdp-service/tests
+
+  generate-report-pipeline:
+    needs: test-service-pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install and Configure uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        shell: bash
+      - name: Create Virtual Environment
+        run: uv venv
+      - name: Install dependencies
+        run: uv pip install -r requirements.txt
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      - name: Move Artifacts
+        run: |
+          mv artifacts/sdp-dataset/dados_completos.csv sdp-data/
+          mv artifacts/sdp-model/* sdp-model/
+      - name: Generate Report
+        run: uv run python sdp-report/generate_report.py
+      - name: Upload Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdp-report
+          path: sdp-report/index.html
+          if-no-files-found: error
