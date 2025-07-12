@@ -18,3 +18,13 @@ __pycache__/
 
 # Modelos e artefatos gerados
 *.pkl
+
+# Arquivos de compilação LaTeX
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.fls
+*.fdb_latexmk

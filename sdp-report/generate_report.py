@@ -45,33 +45,58 @@ def get_modelo_results_html(results):
     html += "</table>"
     return html
 
-def gerar_grafico_feature_importance(importances_dict):
+def gerar_grafico_feature_importance(importances_dict, assets_dir):
     if not importances_dict:
-        return None
+        return None, None
     
     importances = pd.Series(importances_dict).sort_values(ascending=False).head(15)
     fig, ax = plt.subplots(figsize=(10, 8))
     sns.barplot(x=importances.values, y=importances.index, ax=ax)
     ax.set_title('Top 15 Features Mais Importantes (RandomForest)')
     ax.set_xlabel('Importância')
-    return gerar_grafico_para_html(fig)
+    
+    save_path = assets_dir / "feature_importance.png"
+    html_embed = gerar_grafico_para_html(fig, save_path)
+    return html_embed, save_path
 
 # --- Funções Auxiliares ---
 
-def gerar_grafico_para_html(fig):
+def gerar_grafico_para_html(fig, save_path=None):
+    """Converte uma figura matplotlib para uma string base64 e opcionalmente salva em arquivo."""
+    if save_path:
+        save_path.parent.mkdir(exist_ok=True)
+        fig.savefig(save_path, format='png', bbox_inches='tight', dpi=300)
+        print(f"Gráfico salvo em: {save_path}")
+
     buf = io.BytesIO()
     fig.savefig(buf, format='png', bbox_inches='tight')
     plt.close(fig)
     data = base64.b64encode(buf.getbuffer()).decode("ascii")
     return f"data:image/png;base64,{data}"
 
-def gerar_graficos_dados_html(df):
+def gerar_graficos_dados(df, assets_dir):
+    """Gera os gráficos da análise de dados como strings base64 e salva os arquivos."""
     plots = {}
+    
+    # Gráfico 1: Boxplot de Desempenho por Espectro
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.boxplot(x='ESPECTRO_POLITICO', y='INDICE_APROVACAO', data=df, ax=ax, order=df.groupby('ESPECTRO_POLITICO')['INDICE_APROVACAO'].mean().sort_values(ascending=False).index)
     ax.set_title('Desempenho por Espectro Político')
+    ax.set_xlabel('Espectro Político')
+    ax.set_ylabel('Índice de Aprovação')
     plt.xticks(rotation=45, ha='right')
-    plots['desempenho_espectro'] = gerar_grafico_para_html(fig)
+    plots['desempenho_espectro'] = gerar_grafico_para_html(fig, assets_dir / "desempenho_espectro.png")
+
+    # Gráfico 2: Histograma do Índice de Aprovação
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.histplot(df['INDICE_APROVACAO'], kde=True, ax=ax, bins=30)
+    ax.axvline(df['INDICE_APROVACAO'].mean(), color='red', linestyle='--', label=f"Média: {df['INDICE_APROVACAO'].mean():.3f}")
+    ax.set_title('Distribuição do Índice de Aprovação Geral')
+    ax.set_xlabel('Índice de Aprovação')
+    ax.set_ylabel('Frequência')
+    ax.legend()
+    plots['distribuicao_indice'] = gerar_grafico_para_html(fig, assets_dir / "distribuicao_indice.png")
+    
     return plots
 
 def gerar_relatorio_html(data_stats, model_results, plots_dados, plot_importance, output_path):
@@ -120,6 +145,7 @@ def main():
     dataset_path = Path(__file__).parent.parent / "sdp-data" / "dados_completos.csv"
     model_results_path = Path(__file__).parent.parent / "sdp-model" / "model_results.json"
     output_path = Path(__file__).parent / "index.html"
+    assets_dir = Path(__file__).parent.parent / "presentation" / "assets"
 
     if not dataset_path.exists() or not model_results_path.exists():
         print(f"Erro: Arquivos necessários não encontrados.", file=sys.stderr)
@@ -132,10 +158,10 @@ def main():
     
     data_stats_html = get_estatisticas_html(df)
     model_results_html = get_modelo_results_html(model_results)
-    plots_dados_html = gerar_graficos_dados_html(df)
-    plot_importance_html = gerar_grafico_feature_importance(model_results.get('feature_importances'))
+    plots_dados = gerar_graficos_dados(df, assets_dir)
+    plot_importance_html, _ = gerar_grafico_feature_importance(model_results.get('feature_importances'), assets_dir)
     
-    gerar_relatorio_html(data_stats_html, model_results_html, plots_dados_html, plot_importance_html, output_path)
+    gerar_relatorio_html(data_stats_html, model_results_html, plots_dados, plot_importance_html, output_path)
     print("Relatório completo gerado com sucesso!")
 
 if __name__ == "__main__":

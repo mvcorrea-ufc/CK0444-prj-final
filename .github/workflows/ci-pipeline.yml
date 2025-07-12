@@ -70,6 +70,7 @@ jobs:
           path: |
             sdp-model/champion_model.pkl
             sdp-model/preprocessor.pkl
+            sdp-model/model_results.json
           if-no-files-found: error
 
   test-service-pipeline:
@@ -99,7 +100,7 @@ jobs:
       - name: Run Service Unit Tests
         run: uv run --env PYTHONPATH=sdp-service/src python -m unittest discover sdp-service/tests
 
-  generate-report-pipeline:
+  generate-report-and-presentation:
     needs: test-service-pipeline
     runs-on: ubuntu-latest
     steps:
@@ -126,11 +127,19 @@ jobs:
         run: |
           mv artifacts/sdp-dataset/dados_completos.csv sdp-data/
           mv artifacts/sdp-model/* sdp-model/
-      - name: Generate Report
+      - name: Generate Report and Presentation Assets
         run: uv run python sdp-report/generate_report.py
+      - name: Install LaTeX
+        run: sudo apt-get update && sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra latexmk
+      - name: Compile LaTeX Presentation
+        run: latexmk -pdf presentation/presentation.tex -output-directory=presentation
       - name: Upload Report Artifact
         uses: actions/upload-artifact@v4
         with:
           name: sdp-report
           path: sdp-report/index.html
-          if-no-files-found: error
+      - name: Upload Presentation Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdp-presentation
+          path: presentation/presentation.pdf
